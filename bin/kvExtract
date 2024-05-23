@@ -1,28 +1,63 @@
 #!/bin/bash
 
+printShortUsage()
+{
+    # Note: short followed by long option; if the user knows the short one, she can
+    # skim the long one.
+    printf 'Usage: cat FILE [...] | %q %s\n' "$(basename "$1")" '[-F|--input-separator INPUT-SEPARATOR] [-s|--output-separator OUTPUT-SEPARATOR] [--duplicate-key first|last|error|abort] [--] KEY1 [KEY2 ...]'
+    printf 'Usage: %q %s\n' "$(basename "$1")" '-i|--input FILESPEC [-i ...] ... [-?|-h|--help]'
+}
 printUsage()
 {
-    cat <<HELPTEXT
+    # This is the short help when launched with no or incorrect arguments.
+    # It is printed to stderr to avoid accidental processing.
+    printShortUsage "$1" >&2
+    printf >&2 '\nTry %q --help for more information.\n' "$(basename "$1")"
+}
+printLongUsage()
+{
+    # This is the long "man page" when launched with the help argument.
+    # It is printed to stdout to allow paging with 'more'.
+    cat <<HELPDESCRIPTION
 Extract the VALUE(s) of the passed KEY(s) from KEY INPUT-SEPARATOR VALUE lines
 and print all VALUE(s) in the order of KEY(s) given.
-HELPTEXT
+HELPDESCRIPTION
     echo
-    printf 'Usage: cat FILE [...] | %q %s\n' "$(basename "$1")" '[-F|--input-separator INPUT-SEPARATOR] [-s|--output-separator OUTPUT-SEPARATOR] [--] KEY1 [KEY2 ...]'
-    printf 'Usage: %q %s\n' "$(basename "$1")" '-i|--input FILESPEC [-i ...] [-F|--input-separator INPUT-SEPARATOR] [-s|--output-separator OUTPUT-SEPARATOR] [--] KEY1 [KEY2 ...] [-?|-h|--help]'
+    printShortUsage "$1"
+    echo
+    cat <<HELPTEXT
+    --duplicate-key first	Ignore subsequent keys in the input that have
+				already been seen.
+    --duplicate-key last	Duplicate keys in the input override any
+				previously seen records.
+    --duplicate-key error	Duplicate keys in the input cause an error and
+				are not extracted at all. (This is the default.)
+    --duplicate-key abort	Duplicate keys in the input cause the entire
+				extract to abort.
+HELPTEXT
 }
 
 typeset -a fsArgs=()
 typeset -a awkArgs=()
 outputSeparator=$'\n'
+onDuplicateKey=error
 while [ $# -ne 0 ]
 do
     case "$1" in
-	--help|-h|-\?)	shift; printUsage "$0"; exit 0;;
+	--help|-h|-\?)	shift; printLongUsage "$0"; exit 0;;
 	--input|-i)	shift; awkArgs+=("$1"); shift;;
 	--input-separator|-F)
 			shift; fsArgs=(-F "$1"); shift;;
 	--output-separator|-s)
 			shift; outputSeparator="${1?}"; shift;;
+	--duplicate-key)
+			shift
+			onDuplicateKey="${1?}"; shift
+			case "$onDuplicateKey" in
+			    first|last|error|abort)  ;;
+			    *)  { printf 'ERROR: Invalid value for --duplicate-key: %s\n' "$onDuplicateKey"; echo; printShortUsage "$0"; } >&2; exit 2;;
+			esac
+			;;
 	--)		shift; break;;
 	-*)		{ echo "ERROR: Unknown option \"$1\"!"; echo; printUsage "$0"; } >&2; exit 2;;
 	*)		break;;
@@ -37,22 +72,52 @@ IFS=$'\n'
 exec awk "${fsArgs[@]}" \
     -v "keyListString=${*//\\/\\\\}" \
     -v "outputSeparator=${outputSeparator//\\/\\\\}" \
+    -v "onDuplicateKey=$onDuplicateKey" \
 '
 function getFollowingFields()
 {
     $1 = ""; sub(OFS, ""); return $0
 }
+function printDuplicateKeys()
+{
+    if (values[key] == "") {
+	printf("ERROR: Duplicate key \x27%s\x27; duplicate value: \x27%s\x27\n", key, getFollowingFields()) > "/dev/stderr"
+    } else {
+	printf("ERROR: Duplicate key \x27%s\x27; values: \x27%s\x27 and \x27%s\x27\n", key, values[key], getFollowingFields()) > "/dev/stderr"
+    }
+}
 BEGIN {
     keyNum = split(keyListString, keyList, "\n")
     for (k in keyList) keys[keyList[k]] = 1
+    status = 0
 }
 ($1 in keys) {
     key = $1
+    if (key in values) {
+	if (onDuplicateKey == "first") {
+	    next
+	} else if (onDuplicateKey == "last") {
+	    # Update the value.
+	} else if (onDuplicateKey == "error") {
+	    printDuplicateKeys()
+	    status = 1
+	    values[key] = ""
+	    next
+	} else if (onDuplicateKey == "abort") {
+	    printDuplicateKeys()
+	    status = 1
+	    keyNum = 0	# Skip printing values at the END.
+	} else {
+	    printf("ASSERT: Invalid onDuplicateKey: %s\n", onDuplicateKey) > "/dev/stderr"
+	    exit 3
+	}
+    }
     values[key] = getFollowingFields()
 }
 END {
     for (i = 1; i <= keyNum; i++) {
 	printf("%s%s", values[keyList[i]], i == keyNum ? "\n" : outputSeparator)
     }
+    exit status
 }
 ' "${awkArgs[@]}"
