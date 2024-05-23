@@ -1,0 +1,58 @@
+#!/bin/bash
+
+printUsage()
+{
+    cat <<HELPTEXT
+Extract the VALUE(s) of the passed KEY(s) from KEY INPUT-SEPARATOR VALUE lines
+and print all VALUE(s) in the order of KEY(s) given.
+HELPTEXT
+    echo
+    printf 'Usage: cat FILE [...] | %q %s\n' "$(basename "$1")" '[-F|--input-separator INPUT-SEPARATOR] [-s|--output-separator OUTPUT-SEPARATOR] [--] KEY1 [KEY2 ...]'
+    printf 'Usage: %q %s\n' "$(basename "$1")" '-i|--input FILESPEC [-i ...] [-F|--input-separator INPUT-SEPARATOR] [-s|--output-separator OUTPUT-SEPARATOR] [--] KEY1 [KEY2 ...] [-?|-h|--help]'
+}
+
+typeset -a fsArgs=()
+typeset -a awkArgs=()
+outputSeparator=$'\n'
+while [ $# -ne 0 ]
+do
+    case "$1" in
+	--help|-h|-\?)	shift; printUsage "$0"; exit 0;;
+	--input|-i)	shift; awkArgs+=("$1"); shift;;
+	--input-separator|-F)
+			shift; fsArgs=(-F "$1"); shift;;
+	--output-separator|-s)
+			shift; outputSeparator="${1?}"; shift;;
+	--)		shift; break;;
+	-*)		{ echo "ERROR: Unknown option \"$1\"!"; echo; printUsage "$0"; } >&2; exit 2;;
+	*)		break;;
+    esac
+done
+if [ $# -eq 0 ]; then
+    printUsage "$0" >&2
+    exit 2
+fi
+
+IFS=$'\n'
+exec awk "${fsArgs[@]}" \
+    -v "keyListString=${*//\\/\\\\}" \
+    -v "outputSeparator=${outputSeparator//\\/\\\\}" \
+'
+function getFollowingFields()
+{
+    $1 = ""; sub(OFS, ""); return $0
+}
+BEGIN {
+    keyNum = split(keyListString, keyList, "\n")
+    for (k in keyList) keys[keyList[k]] = 1
+}
+($1 in keys) {
+    key = $1
+    values[key] = getFollowingFields()
+}
+END {
+    for (i = 1; i <= keyNum; i++) {
+	printf("%s%s", values[keyList[i]], i == keyNum ? "\n" : outputSeparator)
+    }
+}
+' "${awkArgs[@]}"
