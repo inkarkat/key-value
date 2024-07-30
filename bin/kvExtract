@@ -4,7 +4,7 @@ printShortUsage()
 {
     # Note: short followed by long option; if the user knows the short one, she can
     # skim the long one.
-    printf 'Usage: cat FILE [...] | %q %s\n' "$(basename "$1")" '[-F|--input-separator INPUT-SEPARATOR] [-s|--output-separator OUTPUT-SEPARATOR] [--duplicate-key first|last|error|abort] [--] KEY1 [KEY2 ...]'
+    printf 'Usage: cat FILE [...] | %q %s\n' "$(basename "$1")" '[-F|--field-separator INPUT-SEPARATOR] [-s|--output-separator OUTPUT-SEPARATOR] [--duplicate-key first|last|error|abort] [--] KEY1 [KEY2 ...]'
     printf 'Usage: %q %s\n' "$(basename "$1")" '-i|--input FILESPEC [-i ...] ... [-?|-h|--help]'
 }
 printUsage()
@@ -46,7 +46,7 @@ do
     case "$1" in
 	--help|-h|-\?)	shift; printLongUsage "$0"; exit 0;;
 	--input|-i)	shift; awkArgs+=("$1"); shift;;
-	--input-separator|-F)
+	--field-separator|-F)
 			shift; fsArgs=(-F "$1"); shift;;
 	--output-separator|-s)
 			shift; outputSeparator="${1?}"; shift;;
