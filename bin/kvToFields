@@ -56,11 +56,21 @@ exec awk "${awkArgs[@]}" \
     -v "isBuffered=$isBuffered" \
 '
 {
-    result = ""
+    delete values
     for (i = 1; i <= NF; ++i) {
 	if (match($i, /^([^=]+)=(.*)$/, a)) {
-	    result = result (result == "" ? "" : OFS) a[2]
+	    keyIdx = keys[a[1]]
+	    if (keyIdx == "") {
+		keyIdx = keyCnt++
+		keys[a[1]] = keyIdx
+	    }
+	    values[keyIdx] = a[2]
 	}
+    }
+
+    result = ""
+    for (i = 0; i < keyCnt; ++i) {
+	result = result (i ? OFS : "") values[i]
     }
     print result
     if (! isBuffered) fflush()
