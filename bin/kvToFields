@@ -1,0 +1,68 @@
+#!/bin/bash
+
+printShortUsage()
+{
+    # Note: short followed by long option; if the user knows the short one, they can
+    # skim the long one.
+    printf 'Usage: cat FILE [...] | %q %s\n' "$(basename "$1")" '[-F|--field-separator FS] [-u|--unbuffered] [-?|-h|--help]'
+}
+printUsage()
+{
+    # This is the short help when launched with no or incorrect arguments.
+    # It is printed to stderr to avoid accidental processing.
+    printShortUsage "$1" >&2
+    printf >&2 '\nTry %q --help for more information.\n' "$(basename "$1")"
+}
+printLongUsage()
+{
+    # This is the long "man page" when launched with the help argument.
+    # It is printed to stdout to allow paging with 'more'.
+    cat <<HELPDESCRIPTION
+Convert "KEY=VALUE" pairs on lines to columns (per KEY).
+HELPDESCRIPTION
+    echo
+    printShortUsage "$1"
+    echo
+    cat <<HELPTEXT
+    --field-separator|-F FS
+			Use FS as the input field separator (as with AWK).
+    --unbuffered|-u	Immediately output each read line.
+
+cla-exitstatus
+
+Example:
+HELPTEXT
+    printf '%q %s\n' "$(basename "$1")" '--foo bar /tmp/foobar' # TODO
+}
+
+isBuffered=t
+typeset -a awkArgs=()
+while [ $# -ne 0 ]
+do
+    case "$1" in
+	--help|-h|-\?)	shift; printLongUsage "$0"; exit 0;;
+	--field-separator|-F)
+			shift; awkArgs=(-F "$1"); shift;;
+	--unbuffered|-u)
+			shift; isBuffered=;;
+	--)		break;;
+	-*)		{ echo "ERROR: Unknown option \"$1\"!"; echo; printUsage "$0"; } >&2; exit 2;;
+	*)		break;;
+    esac
+done
+
+IFS=$'\n'
+exec awk "${awkArgs[@]}" \
+    -v "isBuffered=$isBuffered" \
+'
+{
+    result = ""
+    for (i = 1; i <= NF; ++i) {
+	if (match($i, /^([^=]+)=(.*)$/, a)) {
+	    result = result (result == "" ? "" : OFS) a[2]
+	}
+    }
+    print result
+    if (! isBuffered) fflush()
+}
+' "$@"
