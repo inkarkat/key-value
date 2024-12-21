@@ -42,3 +42,17 @@ Warning: Not a key-value pair: notAnElement (-:2 field 2)
 3 baz T
 EOF
 }
+
+@test "syntax error ignored with --syntax-error ignore" {
+    run kvToFields --unbuffered --syntax-error ignore <<'EOF'
+count=1 elem=foo flag=F
+count=2 notAnElement flag=T
+count=3 elem=baz flag=T
+EOF
+    [ $status -eq 0 ]
+    assert_output - <<'EOF'
+1 foo F
+2  T
+3 baz T
+EOF
+}

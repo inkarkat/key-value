@@ -40,7 +40,7 @@ HELPDESCRIPTION
 
 EXIT STATUS:
     0	Complete success.
-    1	Input error.
+    1	Aborted due to input error.
     2	Bad invocation, wrong or missing command-line arguments.
 
 Example:
