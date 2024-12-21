@@ -103,6 +103,11 @@ exec awk "${awkArgs[@]}" \
     -v "isFooterLegend=$isFooterLegend" \
     -v "schemaList=${schema//\\/\\\\}" \
 '
+function die(status)
+{
+    isDead = 1
+    exit status
+}
 function printLegend(      result, key, sep)
 {
     PROCINFO["sorted_in"] = "@val_num_asc"
@@ -150,7 +155,7 @@ NR == 1 {
 	} else {
 	    if (onSyntaxError == "abort") {
 		printf("ERROR: Not a key-value pair: %s (%s:%d field %d)\n", $i, FILENAME, FNR, i) > "/dev/stderr"
-		exit(1)
+		die(1)
 	    } else if (onSyntaxError == "warn") {
 		printf("Warning: Not a key-value pair: %s (%s:%d field %d)\n", $i, FILENAME, FNR, i) > "/dev/stderr"
 	    }
@@ -169,7 +174,7 @@ NR == 1 {
     if (! isBuffered) fflush()
 }
 END {
-    if (isFooterLegend) {
+    if (isFooterLegend && ! isDead) {
 	printLegend()
     }
 }
