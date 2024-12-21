@@ -6,7 +6,7 @@ printShortUsage()
 {
     # Note: short followed by long option; if the user knows the short one, they can
     # skim the long one.
-    printf 'Usage: cat FILE [...] | %q %s\n' "$(basename "$1")" '[-F|--field-separator FS] [-s|--output-separator OUTPUT-SEPARATOR] [-u|--unbuffered] [-E|--syntax-error abort|warn|ignore] [--header-legend] [--footer-legend] [-?|-h|--help]'
+    printf 'Usage: cat FILE [...] | %q %s\n' "$(basename "$1")" '[-F|--field-separator FS] [-s|--output-separator OUTPUT-SEPARATOR] [-u|--unbuffered] [-E|--syntax-error abort|warn|ignore] [--header-legend] [--footer-legend] [--schema "KEY1 KEY2 ..."] [-?|-h|--help]'
 }
 printUsage()
 {
@@ -43,6 +43,9 @@ HELPDESCRIPTION
 			with ${KVTOFIELDS_LEGEND_PREFIX}) before the first line.
     --footer-legend	Print the names of all encountered KEYs (prefixed with
 			${KVTOFIELDS_LEGEND_PREFIX}) after all output.
+    --schema "KEY1 KEY2 ..."
+			Define the order of the expected KEYs. Output will be
+			done in that order.
 
 EXIT STATUS:
     0	Complete success.
@@ -60,6 +63,7 @@ outputSeparator=
 onSyntaxError=abort
 isHeaderLegend=
 isFooterLegend=
+schema=
 while [ $# -ne 0 ]
 do
     case "$1" in
@@ -82,6 +86,7 @@ do
 			shift; isHeaderLegend=t;;
 	--footer-legend)
 			shift; isFooterLegend=t;;
+	--schema)	shift; schema="${1:?}"; shift;;
 	--)		break;;
 	-*)		{ echo "ERROR: Unknown option \"$1\"!"; echo; printUsage "$0"; } >&2; exit 2;;
 	*)		break;;
@@ -96,6 +101,7 @@ exec awk "${awkArgs[@]}" \
     -v "legendPrefix=${KVTOFIELDS_LEGEND_PREFIX//\\/\\\\}" \
     -v "isHeaderLegend=$isHeaderLegend" \
     -v "isFooterLegend=$isFooterLegend" \
+    -v "schemaList=${schema//\\/\\\\}" \
 '
 function printLegend(      result, key, sep)
 {
@@ -108,6 +114,13 @@ function printLegend(      result, key, sep)
     }
     print result
     if (! isBuffered) fflush()
+}
+BEGIN {
+    N = split(schemaList, schemas)
+    for (i = 1; i <= N; ++i) {
+	keys[schemas[i]] = i - 1
+	keyCnt++
+    }
 }
 NR == 1 {
     # Use passed OUTPUT-SEPARATOR, fall back to FS unless it is a regular expression.
