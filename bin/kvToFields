@@ -6,7 +6,7 @@ printShortUsage()
 {
     # Note: short followed by long option; if the user knows the short one, they can
     # skim the long one.
-    printf 'Usage: cat FILE [...] | %q %s\n' "$(basename "$1")" '[-F|--field-separator FS] [-s|--output-separator OUTPUT-SEPARATOR] [-u|--unbuffered] [-E|--syntax-error abort|warn|ignore] [--header-legend] [--footer-legend] [--schema "KEY1 KEY2 ..."] [-?|-h|--help]'
+    printf 'Usage: cat FILE [...] | %q %s\n' "$(basename "$1")" '[-F|--field-separator FS] [-s|--output-separator OUTPUT-SEPARATOR] [-u|--unbuffered] [-E|--syntax-error abort|warn|ignore] [--header-legend] [--footer-legend] [--schema "KEY1 KEY2 ..." [--schema-deviation warn|accept|skip|abort]] [-?|-h|--help]'
 }
 printUsage()
 {
@@ -46,7 +46,19 @@ HELPDESCRIPTION
     --schema "KEY1 KEY2 ..."
 			Define the order of the expected KEYs. Output will be
 			done in that order.
-
+    --schema-deviation warn
+			Accept new KEY(s) that are not part of the passed
+			schema, but print a warning. This is the default
+			behavior.
+    --schema-deviation accept
+			Silently accept new KEY(s) that are not part of the
+			passed schema.
+    --schema-deviation skip
+			Ignore KEY(s) encountered in the input that are not part
+			of the passed schema.
+    --schema-deviation abort
+			When a KEY is encountered that is not part of the passed
+			schema, abort the entire processing of the input.
 EXIT STATUS:
     0	Complete success.
     1	Aborted due to input error.
@@ -54,7 +66,7 @@ EXIT STATUS:
 
 Example:
 HELPTEXT
-    printf '%q %s\n' "$(basename "$1")" '--foo bar /tmp/foobar' # TODO
+    printf 'ping -c 4 localhost | %q %s\n' "$(basename "$1")" '--footer-legend -E ignore'
 }
 
 isBuffered=t
@@ -64,6 +76,7 @@ onSyntaxError=abort
 isHeaderLegend=
 isFooterLegend=
 schema=
+onSchemaDeviation=warn
 while [ $# -ne 0 ]
 do
     case "$1" in
@@ -87,6 +100,14 @@ do
 	--footer-legend)
 			shift; isFooterLegend=t;;
 	--schema)	shift; schema="${1:?}"; shift;;
+	--schema-deviation)
+			shift
+			case "${1:?}" in
+			    warn|accept|skip|abort) onSchemaDeviation="$1";;
+			    *)  { printf 'ERROR: Invalid value for --schema-deviation: %s\n' "$1"; echo; printShortUsage "$0"; } >&2; exit 2;;
+			esac
+			shift
+			;;
 	--)		break;;
 	-*)		{ echo "ERROR: Unknown option \"$1\"!"; echo; printUsage "$0"; } >&2; exit 2;;
 	*)		break;;
@@ -102,6 +123,7 @@ exec awk "${awkArgs[@]}" \
     -v "isHeaderLegend=$isHeaderLegend" \
     -v "isFooterLegend=$isFooterLegend" \
     -v "schemaList=${schema//\\/\\\\}" \
+    -v "onSchemaDeviation=$onSchemaDeviation" \
 '
 function die(status)
 {
@@ -121,8 +143,8 @@ function printLegend(      result, key, sep)
     if (! isBuffered) fflush()
 }
 BEGIN {
-    N = split(schemaList, schemas)
-    for (i = 1; i <= N; ++i) {
+    schemaNum = split(schemaList, schemas)
+    for (i = 1; i <= schemaNum; ++i) {
 	keys[schemas[i]] = i - 1
 	keyCnt++
     }
@@ -148,6 +170,18 @@ NR == 1 {
 	if (match($i, /^([^=]+)=(.*)$/, a)) {
 	    keyIdx = keys[a[1]]
 	    if (keyIdx == "") {
+		if (schemaNum > 0) {
+		    if (onSchemaDeviation == "abort") {
+			printf("ERROR: Unknown key: %s (%s:%d field %d)\n", a[1], FILENAME, FNR, i) > "/dev/stderr"
+			die(1)
+		    } else if (onSchemaDeviation == "warn") {
+			printf("Warning: Unknown key: %s (%s:%d field %d)\n", a[1], FILENAME, FNR, i) > "/dev/stderr"
+		    } else if (onSchemaDeviation == "skip") {
+			delete keys[a[1]]
+			continue
+		    }
+		}
+
 		keyIdx = keyCnt++
 		keys[a[1]] = keyIdx
 	    }
