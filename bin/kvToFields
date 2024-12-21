@@ -198,17 +198,18 @@ NR == 1 {
 	}
     }
 
-    if (NR == 1 && isHeaderLegend) {
-	printLegend()
-    }
-
     if (hasValues) {
+	if (! isSubsequentRecord && isHeaderLegend) {
+	    printLegend()
+	}
+
 	result = ""
 	for (i = 0; i < keyCnt; ++i) {
 	    result = result (i ? OFS : "") values[i]
 	}
 	print result
 	if (! isBuffered) fflush()
+	isSubsequentRecord = 1
     }
 }
 END {
