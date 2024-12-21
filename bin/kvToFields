@@ -1,10 +1,12 @@
 #!/bin/bash
 
+: ${KVTOFIELDS_LEGEND_PREFIX=# }
+
 printShortUsage()
 {
     # Note: short followed by long option; if the user knows the short one, they can
     # skim the long one.
-    printf 'Usage: cat FILE [...] | %q %s\n' "$(basename "$1")" '[-F|--field-separator FS] [-s|--output-separator OUTPUT-SEPARATOR] [-u|--unbuffered] [-E|--syntax-error abort|warn|ignore] [-?|-h|--help]'
+    printf 'Usage: cat FILE [...] | %q %s\n' "$(basename "$1")" '[-F|--field-separator FS] [-s|--output-separator OUTPUT-SEPARATOR] [-u|--unbuffered] [-E|--syntax-error abort|warn|ignore] [--header-legend] [--footer-legend] [-?|-h|--help]'
 }
 printUsage()
 {
@@ -37,6 +39,10 @@ HELPDESCRIPTION
     --syntax-error|-E ignore
 			When input that doesn't match KEY=VALUE is encountered,
 			simply ignore it and continue processing.
+    --header-legend	Print the names of the (first line's) KEYs (prefixed
+			with ${KVTOFIELDS_LEGEND_PREFIX}) before the first line.
+    --footer-legend	Print the names of all encountered KEYs (prefixed with
+			${KVTOFIELDS_LEGEND_PREFIX}) after all output.
 
 EXIT STATUS:
     0	Complete success.
@@ -52,6 +58,8 @@ isBuffered=t
 typeset -a awkArgs=()
 outputSeparator=
 onSyntaxError=abort
+isHeaderLegend=
+isFooterLegend=
 while [ $# -ne 0 ]
 do
     case "$1" in
@@ -70,6 +78,10 @@ do
 			esac
 			shift
 			;;
+	--header-legend)
+			shift; isHeaderLegend=t;;
+	--footer-legend)
+			shift; isFooterLegend=t;;
 	--)		break;;
 	-*)		{ echo "ERROR: Unknown option \"$1\"!"; echo; printUsage "$0"; } >&2; exit 2;;
 	*)		break;;
@@ -81,7 +93,22 @@ exec awk "${awkArgs[@]}" \
     -v "outputSeparator=${outputSeparator//\/\\}" \
     -v "isBuffered=$isBuffered" \
     -v "onSyntaxError=$onSyntaxError" \
+    -v "legendPrefix=${KVTOFIELDS_LEGEND_PREFIX//\\/\\\\}" \
+    -v "isHeaderLegend=$isHeaderLegend" \
+    -v "isFooterLegend=$isFooterLegend" \
 '
+function printLegend(      result, key, sep)
+{
+    PROCINFO["sorted_in"] = "@val_num_asc"
+    result = legendPrefix
+    sep = ""
+    for (key in keys) {
+	result = result sep key
+	sep = OFS
+    }
+    print result
+    if (! isBuffered) fflush()
+}
 NR == 1 {
     # Use passed OUTPUT-SEPARATOR, fall back to FS unless it is a regular expression.
     if (outputSeparator != "") {
@@ -117,11 +144,20 @@ NR == 1 {
 	}
     }
 
+    if (NR == 1 && isHeaderLegend) {
+	printLegend()
+    }
+
     result = ""
     for (i = 0; i < keyCnt; ++i) {
 	result = result (i ? OFS : "") values[i]
     }
     print result
     if (! isBuffered) fflush()
+}
+END {
+    if (isFooterLegend) {
+	printLegend()
+    }
 }
 ' "$@"
