@@ -116,7 +116,7 @@ done
 
 IFS=$'\n'
 exec awk "${awkArgs[@]}" \
-    -v "outputSeparator=${outputSeparator//\/\\}" \
+    -v "outputSeparator=${outputSeparator//\\/\\\\}" \
     -v "isBuffered=$isBuffered" \
     -v "onSyntaxError=$onSyntaxError" \
     -v "legendPrefix=${KVTOFIELDS_LEGEND_PREFIX//\\/\\\\}" \
